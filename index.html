@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            margin: 20px auto;
+            padding: 20px;
+            max-width: 1200px;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .table th, .table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        .table th {
+            background-color: #f4f4f4;
+        }
+        .btn {
+            padding: 8px 12px;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .search-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .search-bar input, .search-bar select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .search-bar input {
+            width: 300px;
+        }
+        .search-bar button {
+            padding: 10px 15px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 400px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .modal-content h2 {
+            margin-top: 0;
+        }
+        .modal-content input, .modal-content select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .modal-content .btn {
+            width: 100%;
+        }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Panel - Manage Orders</h1>
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Search by Order ID or Email">
+            <select id="statusFilter">
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="success">success</option>
+                <option value="rejected">Rejected</option>
+            </select>
+            <button onclick="filterOrders()">Filter</button>
+        </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Order ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="orderTableBody"></tbody>
+        </table>
+    </div>
+
+    <div class="modal" id="orderModal">
+        <div class="modal-content">
+            <h2>Order Details</h2>
+            <p><strong>Order ID:</strong> <span id="modalOrderId"></span></p>
+            <p><strong>User Name:</strong> <span id="modalUserName"></span></p>
+            <p><strong>Email:</strong> <span id="modalEmail"></span></p>
+            <p><strong>Package:</strong> <span id="modalPackage"></span></p>
+            <p><strong>Payment Method:</strong> <span id="modalPaymentMethod"></span></p>
+            <p><strong>Gift Code:</strong> <span id="modalGiftCode"></span></p>
+            <label for="orderStatus">Change Status:</label>
+            <select id="orderStatus">
+                <option value="pending">Pending</option>
+                <option value="success">success</option>
+                <option value="rejected">Rejected</option>
+            </select>
+            <label for="premiumCode">Premium Code:</label>
+            <input type="text" id="premiumCode" placeholder="Enter premium code">
+            <button class="btn" onclick="saveChanges()">Save Changes</button>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCBPGSYNVaPPDu7RWee9ymckMaI1VQNjd4",
+            authDomain: "trendy-movie.firebaseapp.com",
+            databaseURL: "https://trendy-movie-default-rtdb.firebaseio.com",
+            projectId: "trendy-movie",
+            storageBucket: "trendy-movie.firebasestorage.app",
+            messagingSenderId: "699469684359",
+            appId: "1:699469684359:web:34cc2adfc8019b89a76222",
+            measurementId: "G-54SX69JVY3"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const orderTableBody = document.getElementById('orderTableBody');
+        const modal = document.getElementById('orderModal');
+        let currentOrderId = '';
+
+        function fetchOrders() {
+            db.ref('orders').on('value', (snapshot) => {
+                renderOrders(snapshot);
+            });
+        }
+
+        function renderOrders(snapshot) {
+            orderTableBody.innerHTML = '';
+            snapshot.forEach((childSnapshot) => {
+                const order = childSnapshot.val();
+                const row = `<tr>
+                    <td>${order.orderId}</td>
+                    <td>${order.name}</td>
+                    <td>${order.email}</td>
+                    <td>${order.orderStatus}</td>
+                    <td><button class="btn" onclick="viewOrder('${order.orderId}')">View More</button></td>
+                </tr>`;
+                orderTableBody.innerHTML += row;
+            });
+        }
+
+        function filterOrders() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+
+            db.ref('orders').once('value', (snapshot) => {
+                const filteredOrders = [];
+
+                snapshot.forEach((childSnapshot) => {
+                    const order = childSnapshot.val();
+                    const matchesQuery = !query || order.orderId.toLowerCase().includes(query) || order.email.toLowerCase().includes(query);
+                    const matchesStatus = !statusFilter || order.orderStatus === statusFilter;
+
+                    if (matchesQuery && matchesStatus) {
+                        filteredOrders.push(order);
+                    }
+                });
+
+                orderTableBody.innerHTML = '';
+                filteredOrders.forEach((order) => {
+                    const row = `<tr>
+                        <td>${order.orderId}</td>
+                        <td>${order.name}</td>
+                        <td>${order.email}</td>
+                        <td>${order.orderStatus}</td>
+                        <td><button class="btn" onclick="viewOrder('${order.orderId}')">View More</button></td>
+                    </tr>`;
+                    orderTableBody.innerHTML += row;
+                });
+            });
+        }
+
+        function viewOrder(orderId) {
+            currentOrderId = orderId;
+            db.ref(`orders/${orderId}`).once('value').then((snapshot) => {
+                const order = snapshot.val();
+                document.getElementById('modalOrderId').textContent = order.orderId;
+                document.getElementById('modalUserName').textContent = order.name;
+                document.getElementById('modalEmail').textContent = order.email;
+                document.getElementById('modalPackage').textContent = order.package;
+                document.getElementById('modalPaymentMethod').textContent = order.paymentMethod;
+                document.getElementById('modalGiftCode').textContent = order.giftCode;
+                document.getElementById('orderStatus').value = order.orderStatus;
+                document.getElementById('premiumCode').value = order.premiumCode || '';
+                modal.style.display = 'flex';
+            });
+        }
+
+        function saveChanges() {
+            const updatedStatus = document.getElementById('orderStatus').value;
+            const updatedCode = document.getElementById('premiumCode').value;
+            db.ref(`orders/${currentOrderId}`).update({
+                orderStatus: updatedStatus,
+                premiumCode: updatedCode
+            });
+            modal.style.display = 'none';
+            alert('Changes saved successfully!');
+        }
+
+        window.onload = fetchOrders;
+
+        window.onclick = function(event) {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+    </script>
+</body>
+</html>
